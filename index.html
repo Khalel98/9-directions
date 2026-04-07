@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Саморазвитие — 9 направлений</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header__brand">
+          <span class="header__logo" aria-hidden="true">◇</span>
+          <div>
+            <h1 class="header__title">Саморазвитие</h1>
+            <p class="header__subtitle">Девять направлений — от простого к сложному</p>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabbar" role="tablist" aria-label="Категории"></nav>
+
+      <main class="main">
+        <section
+          class="panel"
+          id="task-panel"
+          role="tabpanel"
+          aria-live="polite"
+          aria-labelledby="tab-reviews"
+        >
+          <div class="panel__meta">
+            <div class="card">
+              <label class="card__label" for="weekly-goal">Цель недели</label>
+              <textarea
+                id="weekly-goal"
+                class="card__textarea"
+                rows="2"
+                placeholder="Сформулируйте цель на эту неделю…"
+              ></textarea>
+            </div>
+            <div class="card">
+              <h2 class="card__label">С чего начать</h2>
+              <ol class="steps" id="start-steps"></ol>
+            </div>
+          </div>
+
+          <div class="panel__tasks-head">
+            <h2 class="tasks-title">
+              Задачи
+              <span class="tasks-progress" id="tasks-progress" aria-live="polite"></span>
+            </h2>
+            <div class="filters" role="group" aria-label="Фильтр">
+              <button type="button" class="filter-btn is-active" data-filter="all">Все</button>
+              <button type="button" class="filter-btn" data-filter="active">Активные</button>
+              <button type="button" class="filter-btn" data-filter="done">Готово</button>
+            </div>
+          </div>
+
+          <ul class="task-list" id="task-list"></ul>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <p>Галочки и цели недели сохраняются в браузере.</p>
+      </footer>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
