@@ -45,8 +45,23 @@
               ></textarea>
             </div>
             <div class="card">
-              <h2 class="card__label">С чего начать</h2>
+              <div class="card__head">
+                <h2 class="card__label card__label--inline">С чего начать</h2>
+                <button type="button" class="text-btn" id="reset-steps" hidden>
+                  Вернуть шаблон
+                </button>
+              </div>
               <ol class="steps" id="start-steps"></ol>
+              <form class="inline-form" id="add-step-form" autocomplete="off">
+                <input
+                  type="text"
+                  id="new-step-input"
+                  class="inline-form__input"
+                  placeholder="Новый шаг…"
+                  maxlength="500"
+                />
+                <button type="submit" class="btn btn--secondary btn--small">Добавить шаг</button>
+              </form>
             </div>
           </div>
 
@@ -62,12 +77,30 @@
             </div>
           </div>
 
+          <form class="add-task-form" id="add-task-form" autocomplete="off">
+            <input
+              type="text"
+              id="new-task-title"
+              class="add-task-form__input"
+              placeholder="Название задачи"
+              maxlength="200"
+            />
+            <input
+              type="text"
+              id="new-task-desc"
+              class="add-task-form__input"
+              placeholder="Краткое описание"
+              maxlength="400"
+            />
+            <button type="submit" class="btn btn--primary btn--small">Добавить задачу</button>
+          </form>
+
           <ul class="task-list" id="task-list"></ul>
         </section>
       </main>
 
       <footer class="footer">
-        <p>Галочки и цели недели сохраняются в браузере.</p>
+        <p>Все изменения (цели, шаги, задачи, галочки) сохраняются локально в браузере.</p>
       </footer>
     </div>
     <script src="app.js"></script>

@@ -1,7 +1,8 @@
 (function () {
   "use strict";
 
-  const STORAGE_KEY = "selfdev-todo-v3";
+  const STORAGE_KEY = "selfdev-todo-v4";
+  const LEGACY_STORAGE_KEY = "selfdev-todo-v3";
 
   /**
    * Порядок задач: от простого к более сложному.
@@ -350,36 +351,176 @@
   const weeklyGoalEl = document.getElementById("weekly-goal");
   const tasksProgressEl = document.getElementById("tasks-progress");
   const filterButtons = document.querySelectorAll(".filter-btn");
+  const addStepForm = document.getElementById("add-step-form");
+  const newStepInput = document.getElementById("new-step-input");
+  const resetStepsBtn = document.getElementById("reset-steps");
+  const addTaskForm = document.getElementById("add-task-form");
+  const newTaskTitle = document.getElementById("new-task-title");
+  const newTaskDesc = document.getElementById("new-task-desc");
 
   let activeCategory = CATEGORY_ORDER[0];
   let filter = "all";
 
-  /** @type {{ done: Record<string, Record<string, boolean>>, weeklyGoals: Record<string, string> }} */
+  /**
+   * @type {{
+   *   done: Record<string, Record<string, boolean>>,
+   *   weeklyGoals: Record<string, string>,
+   *   removedTaskIds: Record<string, string[]>,
+   *   extraTasks: Record<string, { id: string, title: string, desc: string }[]>,
+   *   startStepsOverride: Record<string, string[] | undefined>,
+   * }}
+   */
   let state = loadState();
 
   function defaultState() {
-    return { done: {}, weeklyGoals: {} };
+    return {
+      done: {},
+      weeklyGoals: {},
+      removedTaskIds: {},
+      extraTasks: {},
+      startStepsOverride: {},
+    };
+  }
+
+  function normalizeState(parsed) {
+    const d = defaultState();
+    if (!parsed || typeof parsed !== "object") return d;
+    d.done = parsed.done && typeof parsed.done === "object" ? parsed.done : {};
+    d.weeklyGoals =
+      parsed.weeklyGoals && typeof parsed.weeklyGoals === "object" ? parsed.weeklyGoals : {};
+    d.removedTaskIds =
+      parsed.removedTaskIds && typeof parsed.removedTaskIds === "object"
+        ? parsed.removedTaskIds
+        : {};
+    d.extraTasks =
+      parsed.extraTasks && typeof parsed.extraTasks === "object" ? parsed.extraTasks : {};
+    d.startStepsOverride =
+      parsed.startStepsOverride && typeof parsed.startStepsOverride === "object"
+        ? parsed.startStepsOverride
+        : {};
+    for (const id of CATEGORY_ORDER) {
+      if (!d.done[id]) d.done[id] = {};
+      if (!d.removedTaskIds[id]) d.removedTaskIds[id] = [];
+      if (!d.extraTasks[id]) d.extraTasks[id] = [];
+    }
+    return d;
   }
 
   function loadState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultState();
-      const parsed = JSON.parse(raw);
-      if (typeof parsed !== "object" || parsed === null) return defaultState();
-      if (!parsed.done || typeof parsed.done !== "object") parsed.done = {};
-      if (!parsed.weeklyGoals || typeof parsed.weeklyGoals !== "object") parsed.weeklyGoals = {};
-      for (const id of CATEGORY_ORDER) {
-        if (!parsed.done[id]) parsed.done[id] = {};
+      let raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacy) {
+          const old = JSON.parse(legacy);
+          const migrated = normalizeState({
+            done: old.done,
+            weeklyGoals: old.weeklyGoals,
+            removedTaskIds: {},
+            extraTasks: {},
+            startStepsOverride: {},
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          raw = JSON.stringify(migrated);
+        }
       }
-      return parsed;
+      if (!raw) return defaultState();
+      return normalizeState(JSON.parse(raw));
     } catch {
       return defaultState();
     }
   }
 
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn("localStorage save failed", e);
+    }
+  }
+
+  window.addEventListener("beforeunload", saveState);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveState();
+  });
+
+  function uid() {
+    return `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  function getEffectiveStartSteps(catId) {
+    if (
+      state.startStepsOverride &&
+      Object.prototype.hasOwnProperty.call(state.startStepsOverride, catId)
+    ) {
+      const o = state.startStepsOverride[catId];
+      return Array.isArray(o) ? o.slice() : [];
+    }
+    return MANIFEST[catId].startSteps.slice();
+  }
+
+  function setStartStepsOverride(catId, steps) {
+    if (!state.startStepsOverride) state.startStepsOverride = {};
+    state.startStepsOverride[catId] = steps;
+    saveState();
+  }
+
+  function hasStepsOverride(catId) {
+    return (
+      state.startStepsOverride &&
+      Object.prototype.hasOwnProperty.call(state.startStepsOverride, catId)
+    );
+  }
+
+  function removeStartStepAt(catId, index) {
+    const steps = getEffectiveStartSteps(catId);
+    steps.splice(index, 1);
+    setStartStepsOverride(catId, steps);
+  }
+
+  function addStartStep(catId, text) {
+    const steps = getEffectiveStartSteps(catId);
+    steps.push(text);
+    setStartStepsOverride(catId, steps);
+  }
+
+  function resetStartStepsToManifest(catId) {
+    if (state.startStepsOverride && catId in state.startStepsOverride) {
+      delete state.startStepsOverride[catId];
+    }
+    saveState();
+  }
+
+  function getEffectiveTasks(catId) {
+    const removed = new Set(state.removedTaskIds[catId] || []);
+    const base = MANIFEST[catId].tasks.filter((t) => !removed.has(t.id));
+    const extra = state.extraTasks[catId] || [];
+    return base.concat(extra);
+  }
+
+  function isManifestTaskId(catId, taskId) {
+    return MANIFEST[catId].tasks.some((t) => t.id === taskId);
+  }
+
+  function removeTask(catId, taskId) {
+    if (isManifestTaskId(catId, taskId)) {
+      const arr = state.removedTaskIds[catId] || [];
+      if (!arr.includes(taskId)) {
+        arr.push(taskId);
+        state.removedTaskIds[catId] = arr;
+      }
+    } else {
+      state.extraTasks[catId] = (state.extraTasks[catId] || []).filter((t) => t.id !== taskId);
+    }
+    if (state.done[catId] && state.done[catId][taskId]) delete state.done[catId][taskId];
+    saveState();
+  }
+
+  function addExtraTask(catId, title, desc) {
+    const t = { id: uid(), title, desc: desc || "—" };
+    if (!state.extraTasks[catId]) state.extraTasks[catId] = [];
+    state.extraTasks[catId].push(t);
+    saveState();
   }
 
   function isDone(catId, taskId) {
@@ -446,44 +587,55 @@
     });
   }
 
-  function getManifestTasks(catId) {
-    return MANIFEST[catId].tasks;
-  }
-
   function getVisibleTasks(catId) {
-    const tasks = getManifestTasks(catId);
+    const tasks = getEffectiveTasks(catId);
     if (filter === "active") return tasks.filter((t) => !isDone(catId, t.id));
     if (filter === "done") return tasks.filter((t) => isDone(catId, t.id));
     return tasks;
   }
 
   function updateProgress(catId) {
-    const tasks = getManifestTasks(catId);
+    const tasks = getEffectiveTasks(catId);
     const n = tasks.length;
     const k = tasks.filter((t) => isDone(catId, t.id)).length;
     tasksProgressEl.textContent = n ? `${k} / ${n}` : "";
   }
 
-  function renderPanel() {
-    const catId = activeCategory;
-    const m = MANIFEST[catId];
-    if (taskPanel) taskPanel.setAttribute("aria-labelledby", `tab-${catId}`);
-
+  function renderStartSteps(catId) {
     startStepsEl.innerHTML = "";
-    m.startSteps.forEach((step) => {
+    const steps = getEffectiveStartSteps(catId);
+    steps.forEach((step, index) => {
       const li = document.createElement("li");
-      li.textContent = step;
+      li.className = "step-row";
+
+      const span = document.createElement("span");
+      span.className = "step-row__text";
+      span.textContent = step;
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "step-row__delete";
+      del.setAttribute("aria-label", "Удалить шаг");
+      del.textContent = "×";
+      del.addEventListener("click", () => {
+        if (!confirm("Удалить этот шаг?")) return;
+        removeStartStepAt(catId, index);
+        renderPanel();
+      });
+
+      li.append(span, del);
       startStepsEl.appendChild(li);
     });
 
-    weeklyGoalEl.oninput = null;
+    resetStepsBtn.hidden = !hasStepsOverride(catId);
+  }
+
+  function renderPanel() {
+    const catId = activeCategory;
+    if (taskPanel) taskPanel.setAttribute("aria-labelledby", `tab-${catId}`);
+
     weeklyGoalEl.value = getWeeklyGoal(catId);
-    weeklyGoalEl.oninput = () => {
-      const v = weeklyGoalEl.value;
-      if (v.trim() === "") delete state.weeklyGoals[catId];
-      else state.weeklyGoals[catId] = v;
-      saveState();
-    };
+    renderStartSteps(catId);
 
     taskList.innerHTML = "";
     const visible = getVisibleTasks(catId);
@@ -528,12 +680,63 @@
       desc.textContent = t.desc;
       body.append(title, desc);
 
-      li.append(check, body);
+      const delTask = document.createElement("button");
+      delTask.type = "button";
+      delTask.className = "task__delete";
+      delTask.setAttribute("aria-label", "Удалить задачу");
+      delTask.textContent = "×";
+      delTask.addEventListener("click", () => {
+        if (!confirm("Удалить эту задачу?")) return;
+        removeTask(catId, t.id);
+        renderPanel();
+      });
+
+      li.append(check, body, delTask);
       taskList.appendChild(li);
     }
 
     updateProgress(catId);
   }
+
+  weeklyGoalEl.addEventListener("input", () => {
+    const v = weeklyGoalEl.value;
+    const catId = activeCategory;
+    if (v.trim() === "") delete state.weeklyGoals[catId];
+    else state.weeklyGoals[catId] = v;
+    saveState();
+  });
+
+  addStepForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = newStepInput.value.trim();
+    if (!text) return;
+    addStartStep(activeCategory, text);
+    newStepInput.value = "";
+    renderPanel();
+  });
+
+  resetStepsBtn.addEventListener("click", () => {
+    if (
+      !confirm(
+        "Вернуть шаги по шаблону? Текущий список «С чего начать» будет заменён."
+      )
+    ) {
+      return;
+    }
+    resetStartStepsToManifest(activeCategory);
+    renderPanel();
+  });
+
+  addTaskForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = newTaskTitle.value.trim();
+    if (!title) return;
+    const desc = newTaskDesc.value.trim();
+    addExtraTask(activeCategory, title, desc || "—");
+    newTaskTitle.value = "";
+    newTaskDesc.value = "";
+    renderPanel();
+  });
 
   filterButtons.forEach((b) => {
     b.addEventListener("click", () => {
